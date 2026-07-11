@@ -1,0 +1,17 @@
+:3000 {
+    encode gzip
+
+    @backend_routes {
+        path /_event /_event/* /ping /_upload /_upload/* /ws
+    }
+
+    handle @backend_routes {
+        reverse_proxy localhost:8000
+    }
+
+    root * /srv
+    route {
+        try_files {path} {path}/ /404.html
+        file_server
+    }
+}
