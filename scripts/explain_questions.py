@@ -11,23 +11,24 @@ Modello: gemini-3.5-flash (veloce e affidabile)
 
 import json
 import sys
+import os
 from pathlib import Path
 from typing import List, Dict, Any
 import time
 import requests
+from dotenv import load_dotenv
+
+# Carica variabili di ambiente da .env
+load_dotenv()
 
 # Configurazione
-#lukeman.stark@gmail.com
-#GEMINI_API_KEY = "${GEMINI_API_KEY}"
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-#lucaborrelli.work@gmail.com
-GEMINI_API_KEY = "${GEMINI_API_KEY}"
-
-#ciccinideromatre@gmail.com
-#GEMINI_API_KEY = "${GEMINI_API_KEY}"
-
-#lucaborrelli.filo@gmail.com
-#GEMINI_API_KEY = "${GEMINI_API_KEY}"
+if not GEMINI_API_KEY:
+    print("❌ ERRORE: GEMINI_API_KEY non trovato in .env")
+    print("   Aggiungi la seguente riga nel file .env:")
+    print("   GEMINI_API_KEY=your_api_key_here")
+    sys.exit(1)
 
 MODEL = "gemini-3.5-flash"  # Veloce e affidabile
 BATCH_SIZE = 5  # 5 domande per batch
