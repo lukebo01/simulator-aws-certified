@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """
-Script per generare spiegazioni in italiano delle risposte corrette.
-Prende 4 domande alla volta e chiede a un LLM di spiegare perchè la risposta è corretta.
+Script per generare spiegazioni in italiano e aggiornare i JSON.
+Prende 5 domande alla volta, chiede al LLM e aggiorna direttamente i file normalizzati.
 
-Usa BazaarLink API (base_url: https://bazaarlink.ai/api/v1)
-Modello: anthropic/claude-haiku-4-5
-API Key: sk-bl-UUlFT_sD3alq-caVnjz4oqsXUvYruPSHJ5M0H6K5uBey0Qzk
+Con CHECKPOINT di progresso - riprende da dove era rimasto se fallisce!
+
+Usa Google Gemini API REST (GRATIS!)
+Modello: gemini-3.5-flash (veloce e affidabile)
 """
 
 import json
@@ -13,20 +14,51 @@ import sys
 from pathlib import Path
 from typing import List, Dict, Any
 import time
-
-# Per usare OpenAI SDK con BazaarLink
-from openai import OpenAI
+import requests
 
 # Configurazione
-BAZAARLINK_API_KEY = "sk-bl-UUlFT_sD3alq-caVnjz4oqsXUvYruPSHJ5M0H6K5uBey0Qzk"
-BAZAARLINK_BASE_URL = "https://bazaarlink.ai/api/v1"
-MODEL = "anthropic/claude-haiku-4-5"
+#lukeman.stark@gmail.com
+#GEMINI_API_KEY = "${GEMINI_API_KEY}"
 
-# Inizializza client
-client = OpenAI(
-    base_url=BAZAARLINK_BASE_URL,
-    api_key=BAZAARLINK_API_KEY,
-)
+#lucaborrelli.work@gmail.com
+GEMINI_API_KEY = "${GEMINI_API_KEY}"
+
+#ciccinideromatre@gmail.com
+#GEMINI_API_KEY = "${GEMINI_API_KEY}"
+
+#lucaborrelli.filo@gmail.com
+#GEMINI_API_KEY = "${GEMINI_API_KEY}"
+
+MODEL = "gemini-3.5-flash"  # Veloce e affidabile
+BATCH_SIZE = 5  # 5 domande per batch
+API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
+
+
+def get_checkpoint_file(json_file: Path) -> Path:
+    """Ritorna il path del file di checkpoint."""
+    return json_file.parent / f".{json_file.stem}_checkpoint.json"
+
+
+def load_checkpoint(json_file: Path) -> Dict[str, Any]:
+    """Carica il checkpoint di progresso."""
+    checkpoint_file = get_checkpoint_file(json_file)
+    if checkpoint_file.exists():
+        with open(checkpoint_file, "r") as f:
+            return json.load(f)
+    return {"last_batch": -1, "total_updated": 0, "failed_batches": []}
+
+
+def save_checkpoint(json_file: Path, batch_num: int, total_updated: int, failed_batches: List[int]):
+    """Salva il checkpoint di progresso."""
+    checkpoint_file = get_checkpoint_file(json_file)
+    checkpoint = {
+        "last_batch": batch_num,
+        "total_updated": total_updated,
+        "failed_batches": failed_batches,
+        "timestamp": time.time()
+    }
+    with open(checkpoint_file, "w") as f:
+        json.dump(checkpoint, f)
 
 
 def load_questions(json_file: Path) -> List[Dict[str, Any]]:
@@ -54,135 +86,237 @@ Risposta corretta: {question['correct_answer']}
 
 def get_explanation_from_llm(questions: List[Dict[str, Any]]) -> str:
     """
-    Manda 4 domande al LLM e riceve le spiegazioni in italiano.
-    
-    Args:
-        questions: Lista di 4 domande
-        
-    Returns:
-        Risposta del LLM con le spiegazioni
+    Manda 5 domande al LLM via REST API e riceve spiegazioni in italiano come JSON.
+    Usa gemini-3.5-flash per velocità, fallback a gemini-2.0-flash se non disponibile.
     """
-    # Formatta tutte le domande
     formatted_questions = "\n\n---\n\n".join(
         format_question_for_llm(q) for q in questions
     )
     
-    # Crea il prompt
-    prompt = f"""Sei un esperto di certificazioni AWS. Per ognuna delle seguenti 4 domande, 
+    prompt = f"""Sei un esperto di certificazioni AWS. Per ognuna delle seguenti {len(questions)} domande,
 spiegami in italiano e in modo dettagliato perchè la risposta indicata è corretta, considerando:
 - Lo scenario descritto nella domanda
 - I dettagli tecnici di ogni opzione
 - Perchè le altre opzioni sono sbagliate
 - Principi AWS e best practices rilevanti
 
-Rispondi in JSON con la seguente struttura, una voce per ogni domanda:
-{{
-  "question_number": <numero>,
-  "correct_answer": "<lettera>",
-  "explanation": "<spiegazione in italiano, 2-3 paragrafi>"
-}}
+Rispondi SOLO con un JSON valido in questo esatto formato (niente altro, solo JSON):
+[
+  {{
+    "number": <numero domanda>,
+    "correct_answer": "<lettera>",
+    "explanation": "<spiegazione in italiano, 2-3 paragrafi>"
+  }}
+]
 
 Ecco le domande:
 
-{formatted_questions}
+{formatted_questions}"""
 
-Rispondi SOLO con un array JSON valido, niente altro."""
-
-    print(f"🔄 Invio 4 domande al LLM...")
+    print(f"🔄 Invio {len(questions)} domande a Gemini...")
     
-    response = client.chat.completions.create(
-        model=MODEL,
-        messages=[
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0.7,
-    )
+    # Prova modelli in ordine di preferenza
+    models_to_try = ["gemini-3.5-flash"]
     
-    return response.choices[0].message.content
+    for model in models_to_try:
+        try:
+            url = f"{API_BASE_URL}/{model}:generateContent?key={GEMINI_API_KEY}"
+            headers = {"Content-Type": "application/json"}
+            payload = {
+                "contents": [
+                    {
+                        "parts": [
+                            {
+                                "text": prompt
+                            }
+                        ]
+                    }
+                ]
+            }
+            
+            print(f"   Tentando con {model}...")
+            response = requests.post(url, json=payload, headers=headers, timeout=60)
+            response.raise_for_status()
+            data = response.json()
+            
+            if "candidates" in data and len(data["candidates"]) > 0:
+                print(f"   ✓ {model} OK")
+                return data["candidates"][0]["content"]["parts"][0]["text"]
+            else:
+                print(f"   ⚠️  Risposta vuota da {model}")
+                continue
+        
+        except requests.exceptions.RequestException as e:
+            error_msg = str(e)
+            if "503" in error_msg or "UNAVAILABLE" in error_msg:
+                print(f"   ⚠️  {model} sovraccarico, provo il prossimo...")
+                continue
+            else:
+                print(f"   ❌ Errore con {model}: {e}")
+                if hasattr(e, 'response') and e.response is not None:
+                    print(f"      Status: {e.response.status_code}")
+                continue
+    
+    # Se tutti i modelli falliscono
+    raise Exception("Nessun modello disponibile - riprova più tardi")
 
 
 def parse_llm_response(response_text: str) -> List[Dict[str, Any]]:
     """Parse la risposta JSON dal LLM."""
     try:
         # Estrai il JSON dalla risposta
-        # Potrebbe contenere testo extra, quindi cerchiamo l'array JSON
         start = response_text.find('[')
         end = response_text.rfind(']') + 1
         
         if start == -1 or end == 0:
-            print("❌ Errore: Nessun JSON trovato nella risposta")
+            print(f"❌ Nessun JSON trovato nella risposta")
             return []
         
         json_str = response_text[start:end]
-        explanations = json.loads(json_str)
         
-        return explanations
-    except json.JSONDecodeError as e:
-        print(f"❌ Errore nel parsing JSON: {e}")
-        print(f"Risposta ricevuta: {response_text[:500]}")
+        try:
+            explanations = json.loads(json_str)
+        except json.JSONDecodeError as e:
+            print(f"❌ JSON invalido: {e}")
+            print(f"   Tentativo JSON (primi 200 char): {json_str[:200]}")
+            return []
+        
+        # Valida struttura
+        valid_explanations = []
+        for exp in explanations:
+            if not isinstance(exp, dict):
+                print(f"   ⚠️  Elemento non è dict: {type(exp)}")
+                continue
+            if "number" not in exp or "explanation" not in exp:
+                print(f"   ⚠️  Elemento manca di campi obbligatori: {exp}")
+                continue
+            valid_explanations.append(exp)
+        
+        if not valid_explanations and explanations:
+            print(f"❌ Nessuna spiegazione valida nel JSON")
+        
+        return valid_explanations
+    
+    except Exception as e:
+        print(f"❌ Errore parsing: {e}")
         return []
 
 
-def process_questions_in_batches(json_file: Path, output_file: Path = None, batch_size: int = 4):
-    """
-    Processa le domande in batch e salva le spiegazioni.
+def update_json_file(json_file: Path, explanations: List[Dict[str, Any]]):
+    """Aggiorna il file JSON con le nuove spiegazioni."""
+    try:
+        with open(json_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        
+        # Crea una mappa per accesso veloce
+        exp_map = {exp["number"]: exp["explanation"] for exp in explanations}
+        
+        # Aggiorna le domande
+        updated_count = 0
+        for question in data["questions"]:
+            if question["number"] in exp_map:
+                question["explanation"] = exp_map[question["number"]]
+                updated_count += 1
+        
+        # Salva il file aggiornato
+        with open(json_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        
+        return updated_count
     
-    Args:
-        json_file: Path al file JSON con le domande
-        output_file: Path al file di output (default: same name with _explained)
-        batch_size: Numero di domande per batch (default: 4)
+    except KeyError as e:
+        print(f"❌ KeyError durante aggiornamento: {e}")
+        print(f"   Spiegazioni ricevute: {explanations}")
+        raise
+    except Exception as e:
+        print(f"❌ Errore durante aggiornamento: {e}")
+        raise
+
+
+def process_questions_in_batches(json_file: Path, batch_size: int = BATCH_SIZE):
     """
-    # Carica domande
+    Processa le domande in batch e aggiorna il JSON direttamente.
+    Usa checkpoint per riprendere da dove era rimasto.
+    """
     questions = load_questions(json_file)
     print(f"📚 Caricate {len(questions)} domande da {json_file.name}")
     
-    # Setup output file
-    if output_file is None:
-        output_file = json_file.parent / f"{json_file.stem}_explained.json"
-    
-    # Inizializza struttura output
-    all_explanations = {}
-    
-    # Processa in batch
     total_batches = (len(questions) + batch_size - 1) // batch_size
     
-    for batch_num in range(total_batches):
+    # Carica checkpoint
+    checkpoint = load_checkpoint(json_file)
+    last_batch = checkpoint["last_batch"]
+    total_updated = checkpoint["total_updated"]
+    failed_batches = checkpoint["failed_batches"]
+    
+    if last_batch >= 0:
+        print(f"📌 Checkpoint trovato!")
+        print(f"   ✅ Ultimo batch riuscito: {last_batch}/{total_batches - 1}")
+        print(f"   📊 Domande aggiornate finora: {total_updated}")
+        if failed_batches:
+            print(f"   ⚠️  Batch falliti: {failed_batches}")
+        print(f"   🔄 Riprendo da batch {last_batch + 1}...\n")
+        start_batch = last_batch + 1
+    else:
+        print(f"🆕 Nessun checkpoint trovato - inizio da zero\n")
+        start_batch = 0
+    
+    for batch_num in range(start_batch, total_batches):
         start_idx = batch_num * batch_size
         end_idx = min(start_idx + batch_size, len(questions))
         batch = questions[start_idx:end_idx]
         
-        print(f"\n📋 Batch {batch_num + 1}/{total_batches} - Domande {start_idx + 1}-{end_idx}")
+        print(f"📋 Batch {batch_num + 1}/{total_batches} - Domande {start_idx + 1}-{end_idx}")
         
-        # Chiedi al LLM
-        response = get_explanation_from_llm(batch)
+        try:
+            # Chiedi al LLM
+            response = get_explanation_from_llm(batch)
+            
+            # Parse risposta
+            explanations = parse_llm_response(response)
+            
+            if explanations:
+                # Aggiorna il JSON
+                updated = update_json_file(json_file, explanations)
+                total_updated += updated
+                print(f"  ✅ Aggiornate {updated} domande")
+                
+                # Salva checkpoint di successo
+                save_checkpoint(json_file, batch_num, total_updated, failed_batches)
+            else:
+                print(f"  ⚠️  Nessuna spiegazione valida - salto questo batch")
+                failed_batches.append(batch_num)
+                save_checkpoint(json_file, batch_num - 1 if batch_num > 0 else -1, total_updated, failed_batches)
         
-        # Parse risposta
-        explanations = parse_llm_response(response)
+        except Exception as e:
+            print(f"  ❌ ERRORE: {e}")
+            failed_batches.append(batch_num)
+            save_checkpoint(json_file, batch_num - 1 if batch_num > 0 else -1, total_updated, failed_batches)
+            print(f"  💾 Checkpoint salvato - riprendi con lo stesso comando\n")
+            return  # Esce per permettere di riavviare
         
-        # Salva spiegazioni
-        for explanation in explanations:
-            if "question_number" in explanation:
-                all_explanations[str(explanation["question_number"])] = explanation
-                print(f"  ✅ Domanda #{explanation['question_number']}: Spiegazione ricevuta")
-        
-        # Rate limit: aspetta un po' tra i batch
+        # Rate limit: aspetta tra i batch
         if batch_num < total_batches - 1:
-            print("⏳ Aspetto 2 secondi prima del prossimo batch...")
+            print("⏳ Aspetto 2 secondi...")
             time.sleep(2)
     
-    # Salva tutte le spiegazioni
-    with open(output_file, "w", encoding="utf-8") as f:
-        json.dump(all_explanations, f, indent=2, ensure_ascii=False)
+    print(f"\n✨ Aggiornamento COMPLETATO!")
+    print(f"📊 Totale aggiornate: {total_updated}/{len(questions)}")
+    if failed_batches:
+        print(f"⚠️  Batch falliti: {set(failed_batches)} - riprova questi batch manualmente")
     
-    print(f"\n✨ Spiegazioni salvate in: {output_file}")
-    print(f"📊 Totale spiegazioni: {len(all_explanations)}/{len(questions)}")
+    # Rimuovi checkpoint al completamento se tutti i batch sono stati elaborati
+    checkpoint_file = get_checkpoint_file(json_file)
+    if checkpoint_file.exists() and len(failed_batches) < total_batches:
+        checkpoint_file.unlink()
+        print("🗑️  Checkpoint rimosso")
 
 
 if __name__ == "__main__":
     script_dir = Path(__file__).parent
     project_root = script_dir.parent
     
-    # File di input (puoi cambiar questo)
+    # File di input
     json_file = project_root / "data" / "json_normalized" / "aws_saa_c03.json"
     
     if not json_file.exists():
@@ -191,8 +325,10 @@ if __name__ == "__main__":
     
     print("🚀 Generatore di spiegazioni AWS Exam")
     print(f"📁 File: {json_file.name}")
-    print(f"🔑 API: BazaarLink")
-    print(f"🤖 Modello: {MODEL}\n")
+    print(f"🔑 API: Google Gemini REST (GRATIS)")
+    print(f"🤖 Modelli: gemini-2.0-flash → gemini-3.5-flash (fallback)")
+    print(f"📦 Batch size: {BATCH_SIZE} domande")
+    print(f"💾 Con CHECKPOINT di progresso")
+    print(f"⏳ Se carico alto: aspetta e riprova\n")
     
-    # Processa le domande
-    process_questions_in_batches(json_file)
+    process_questions_in_batches(json_file, BATCH_SIZE)
