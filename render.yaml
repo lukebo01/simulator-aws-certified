@@ -13,8 +13,8 @@ services:
       pip install --upgrade pip setuptools wheel &&
       pip install -r ../requirements.txt
     
-    # Start command - Lancia l'app completa Reflex
-    startCommand: cd reflex_app && reflex run --env prod
+    # Start command - Lancia l'app completa Reflex in production
+    startCommand: cd reflex_app && reflex run --env prod --frontend-only false
     
     # Expose port 8000 (default di Reflex)
     port: 8000
