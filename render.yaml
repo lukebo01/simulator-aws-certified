@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: aws-simulator
+    env: python
+    plan: free
+    runtime: python-3.11
+    
+    # Directory dove si trova l'app Reflex
+    workingDirectory: reflex_app
+    
+    # Build command - Installa dipendenze e compila il frontend
+    buildCommand: |
+      pip install --upgrade pip setuptools wheel &&
+      pip install -r ../requirements.txt &&
+      reflex init &&
+      reflex export --frontend-only --no-zip
+    
+    # Start command per production
+    # Reflex gestisce sia backend che frontend quando fatto il build
+    startCommand: reflex run --env prod --frontend-only false
+    
+    # Expose port 8000 (default di Reflex)
+    port: 8000
+    
+    # Environment variables
+    envVars:
+      - key: REFLEX_ENV
+        value: prod
+      - key: REFLEX_VAR_OPENING_TAG
+        value: "{{"
+      - key: REFLEX_VAR_CLOSING_TAG
+        value: "}}"
+      - key: PYTHONUNBUFFERED
+        value: "1"
+
