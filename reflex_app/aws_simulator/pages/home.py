@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import reflex as rx
-from aws_simulator.state import ExamState, QuizState
+from aws_simulator.state import ExamState, QuizState, UserState
 from aws_simulator.config import EXAMS, DATA_DIR
 import json
 from pathlib import Path
 
 
 def _get_exam_question_count(exam_id: str) -> int:
+
     """Legge il numero di domande da JSON."""
     try:
         json_file = DATA_DIR / f"aws_{exam_id}.json"
@@ -170,10 +171,9 @@ def exam_card(exam_id: str, exam_info: dict) -> rx.Component:
                     size="3",
                     color_scheme="blue",
                     font_weight="600",
-                    on_click=[
+                    on_click=lambda: [
                         ExamState.select_exam(exam_id),
-                        QuizState.load_quiz(exam_id),
-                        rx.redirect("/quiz"),
+                        rx.redirect("/mode-selection"),
                     ],
                     _hover={
                         "transform": "translateY(-2px)",
@@ -224,8 +224,11 @@ def exam_selection_grid() -> rx.Component:
         width="100%",
     )
 
-
-@rx.page(route="/", title="AWS Exam Simulator")
+@rx.page(
+    route="/", 
+    title="AWS Exam Simulator", 
+    on_load=[UserState.check_profile_and_redirect, ExamState.load_exams]
+)
 def home_page() -> rx.Component:
     """Pagina principale - Design moderno e sofisticato."""
     return rx.vstack(
@@ -237,6 +240,48 @@ def home_page() -> rx.Component:
         
         # Main content
         rx.vstack(
+            # Header con profilo
+            rx.hstack(
+                rx.spacer(),
+                rx.hstack(
+                    rx.text(
+                        "👤 " + UserState.current_user_name,
+                        size="2",
+                        weight="bold",
+                        color="#495057",
+                    ),
+                    rx.button(
+                        "Classifica",
+                        size="1",
+                        color_scheme="gray",
+                        variant="outline",
+                        on_click=rx.redirect("/leaderboard"),
+                    ),
+                    rx.button(
+                        "Profili",
+                        size="1",
+                        color_scheme="gray",
+                        variant="outline",
+                        on_click=rx.redirect("/profiles"),
+                    ),
+                    rx.button(
+                        "Logout",
+                        size="1",
+                        color_scheme="red",
+                        variant="outline",
+                        on_click=lambda: [
+                            UserState.logout(),
+                            rx.redirect("/"),
+                        ],
+                    ),
+                    spacing="2",
+                ),
+                width="100%",
+                padding="1.5rem 2rem",
+                border_bottom="1px solid rgba(0, 0, 0, 0.1)",
+                align="center",
+            ),
+            
             # Hero section
             rx.vstack(
                 rx.hstack(

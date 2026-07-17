@@ -3,7 +3,10 @@ import reflex as rx
 
 # Importa le pagine
 from aws_simulator.pages.home import home_page  # noqa: F401
+from aws_simulator.pages.profile_selection import profile_selection_page  # noqa: F401
+from aws_simulator.pages.mode_selection import mode_selection_page  # noqa: F401
 from aws_simulator.pages.quiz import quiz_page  # noqa: F401
+from aws_simulator.pages.leaderboard import leaderboard_page  # noqa: F401
 
 
 def _meta_favicon() -> rx.Component:
