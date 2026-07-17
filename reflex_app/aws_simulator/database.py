@@ -23,7 +23,7 @@ class UserProfile(BaseModel):
     created_at: str
     last_login: str
     progress: Dict[str, UserProgress] = {}  # {exam_id: UserProgress}
-    exam_results: Dict[str, Dict] = {}  # {exam_id: {score, date, mode, etc}}
+    exam_results: Dict[str, List[Dict]] = {}  # {exam_id: [{score, date, mode, etc}, ...]}
 
 
 class Database:

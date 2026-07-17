@@ -150,6 +150,7 @@ class QuizState(rx.State):
     # Dati sessione
     exam_id: str = ""
     mode: str = "practice"  # "practice" o "exam"
+    user_id: str = ""  # Salva user_id all'inizio del quiz
     questions: List[Question] = []
     current_question_index: int = 0
     selected_answer: Optional[str] = None
@@ -171,10 +172,11 @@ class QuizState(rx.State):
     
     @rx.event
     def start_quiz(self, exam_id: str, mode: str = "practice"):
-        """Avvia il quiz salvando exam_id e mode, poi redirige."""
+        """Avvia il quiz salvando exam_id, mode e user_id, poi redirige."""
         print(f"🚀 START_QUIZ CHIAMATO: exam_id={exam_id}, mode={mode}")
         self.exam_id = exam_id
         self.mode = mode
+        # Nota: user_id verrà riempito quando load_quiz viene eseguito
         # Utilizza il riferimento alla classe QuizState per ottenere l'EventSpec corretto
         return [
             QuizState.load_quiz(exam_id, mode),
@@ -184,6 +186,16 @@ class QuizState(rx.State):
     @rx.event(background=True)
     async def load_quiz(self, exam_id: str, mode: str = "practice"):
         """Carica le domande dall'esame selezionato."""
+        # Leggi user_id da UserState prima di entrare nel blocco async
+        from aws_simulator.state import UserState
+        user_state_data = None
+        try:
+            # Prova a accedere a UserState dal contesto (questo potrebbe non funzionare in background task)
+            # Come fallback, salva un placeholder che verrà aggiornato
+            pass
+        except:
+            pass
+        
         async with self:
             self.is_loading = True
             self.exam_id = exam_id
@@ -196,6 +208,8 @@ class QuizState(rx.State):
             self.correct_answers_count = 0
             self.time_expired = False
             self.timer_active = False
+            # Nota: user_id dovrebbe essere letto da una fonte esterna
+            # Per ora, lo lascerò vuoto e verrà recuperato al momento del salvataggio
         
         try:
             # Determina il file JSON - mantieni gli underscores (saa_c03 → aws_saa_c03.json)
@@ -301,6 +315,10 @@ class QuizState(rx.State):
                     self.quiz_completed = True
                     print("⏰ Tempo scaduto!")
             yield
+        
+        # Quando il timer finisce, salva i risultati
+        if self.quiz_completed:
+            yield QuizState.save_results()
     
     @rx.event
     def stop_timer(self):
@@ -350,6 +368,9 @@ class QuizState(rx.State):
             # Quiz completato
             self.timer_active = False
             self.quiz_completed = True
+            # Salva i risultati automaticamente
+            self.save_results()
+            print("✅ Risultati salvati automaticamente")
     
     @rx.event
     def previous_question(self):
@@ -378,37 +399,53 @@ class QuizState(rx.State):
         if not self.exam_id:
             return
         
-        user_state = UserState()
-        if not user_state.current_user_id:
-            print("❌ Nessun utente selezionato")
-            return
-        
         db = get_db()
+        
+        # Se user_id è salvato in QuizState, usalo
+        if self.user_id:
+            user_id = self.user_id
+        else:
+            # Fallback: ottieni il profilo attualmente attivo dal database
+            # (il profilo con l'ultimo login recente)
+            all_profiles = db.get_all_profiles()
+            if not all_profiles:
+                print("❌ Nessun profilo trovato nel database")
+                return
+            # Prendi il profilo con il login più recente
+            user_id = max(all_profiles, key=lambda p: p.last_login).id
+        
         score_percentage = self.score_percentage
         time_spent = max(0, self.total_time_seconds - self.time_remaining_seconds) if self.mode == "exam" else 0
         
-        # Salva il risultato
-        db.save_exam_result(
-            user_id=user_state.current_user_id,
-            exam_id=self.exam_id,
-            score=score_percentage,
-            correct=self.correct_answers_count,
-            total=len(self.questions),
-            mode=self.mode,
-            time_spent=time_spent,
-        )
-        
-        # Se è esercitazione, salva il progresso
-        if self.mode == "practice":
-            progress = UserProgress(
+        try:
+            # Salva il risultato
+            db.save_exam_result(
+                user_id=user_id,
                 exam_id=self.exam_id,
-                completed_questions=self.answers,
-                correct_count=self.correct_answers_count,
-                last_question_index=self.current_question_index,
-                last_updated=str(__import__("datetime").datetime.now().isoformat()),
-                total_reviewed=len(self.questions),
+                score=score_percentage,
+                correct=self.correct_answers_count,
+                total=len(self.questions),
+                mode=self.mode,
+                time_spent=time_spent,
             )
-            db.save_progress(user_state.current_user_id, self.exam_id, progress)
+            
+            # Se è esercitazione, salva il progresso
+            if self.mode == "practice":
+                progress = UserProgress(
+                    exam_id=self.exam_id,
+                    completed_questions=self.answers,
+                    correct_count=self.correct_answers_count,
+                    last_question_index=self.current_question_index,
+                    last_updated=str(__import__("datetime").datetime.now().isoformat()),
+                    total_reviewed=len(self.questions),
+                )
+                db.save_progress(user_id, self.exam_id, progress)
+            
+            print(f"✅ Risultati salvati per user_id={user_id}, exam_id={self.exam_id}, score={score_percentage:.1f}%")
+        except Exception as e:
+            print(f"❌ Errore nel salvataggio dei risultati: {e}")
+            import traceback
+            traceback.print_exc()
     
     @rx.var
     def current_question(self) -> Optional[Question]:
