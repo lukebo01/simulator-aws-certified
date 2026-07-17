@@ -49,13 +49,10 @@ COPY . .
 # 7. Crea cartella assets
 RUN mkdir -p assets/images
 
-# 8. COMPILAZIONE FRONTEND (non interattivo)
-RUN echo "0" | reflex init --no-interactive 2>/dev/null || echo "0" | reflex init || true
+# 8. COMPILAZIONE FRONTEND (la tua app è già configurata, non usare reflex init)
 
-# Esporta il frontend in formato statico e sposta in /srv
-RUN reflex export --frontend-only --no-zip \
-    && if [ -d .web/build/client ]; then cp -r .web/build/client/* /srv/; elif [ -d .web/build ]; then cp -r .web/build/* /srv/; elif [ -d .web/_static ]; then cp -r .web/_static/* /srv/; fi \
-    && rm -rf .web
+# Esporta il frontend in formato statico e sposta in /srv (opzionale, velocizza lo start)
+RUN cd reflex_app && reflex export --frontend-only --no-zip || true
 
 # Espone solo la porta 3000 (unico ingresso pubblico – Caddy)
 EXPOSE 3000
@@ -67,11 +64,5 @@ STOPSIGNAL SIGKILL
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# 10. AVVIO: Caddy in background + Backend Python sulla porta 8000 (locale)
-CMD ["/bin/bash", "-c", "set -e; \
-    echo '=== Starting Caddy ===' >&2; \
-    caddy start --config /app/Caddyfile && \
-    echo '=== Caddy started successfully ===' >&2; \
-    sleep 2; \
-    echo '=== Starting Reflex Backend ===' >&2; \
-    exec reflex run --env prod --backend-only --backend-host 127.0.0.1 2>&1"]
+# 10. AVVIO: Backend + Frontend Reflex sulla porta 8000
+CMD cd /app/reflex_app && exec reflex run --env prod

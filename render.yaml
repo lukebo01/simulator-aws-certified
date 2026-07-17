@@ -8,17 +8,15 @@ services:
     # Directory dove si trova l'app Reflex
     workingDirectory: reflex_app
     
-    # Build command - Installa dipendenze e compila il frontend
+    # Build command - Pre-compila il frontend per velocizzare (opzionale)
     buildCommand: |
       pip install --upgrade pip setuptools wheel &&
       pip install -r ../requirements.txt &&
       cd reflex_app &&
-      echo "0" | reflex init --no-interactive 2>/dev/null || echo "0" | reflex init || true &&
-      reflex export --frontend-only --no-zip
+      reflex export --frontend-only --no-zip || true
     
-    # Start command per production
-    # Reflex gestisce sia backend che frontend quando fatto il build
-    startCommand: reflex run --env prod --frontend-only false
+    # Start command - Lancia l'app completa Reflex
+    startCommand: cd reflex_app && reflex run --env prod
     
     # Expose port 8000 (default di Reflex)
     port: 8000
