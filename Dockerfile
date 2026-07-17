@@ -49,8 +49,8 @@ COPY . .
 # 7. Crea cartella assets
 RUN mkdir -p assets/images
 
-# 8. COMPILAZIONE FRONTEND
-RUN reflex init
+# 8. COMPILAZIONE FRONTEND (non interattivo)
+RUN echo "0" | reflex init --no-interactive 2>/dev/null || echo "0" | reflex init || true
 
 # Esporta il frontend in formato statico e sposta in /srv
 RUN reflex export --frontend-only --no-zip \

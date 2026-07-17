@@ -12,7 +12,8 @@ services:
     buildCommand: |
       pip install --upgrade pip setuptools wheel &&
       pip install -r ../requirements.txt &&
-      reflex init &&
+      cd reflex_app &&
+      echo "0" | reflex init --no-interactive 2>/dev/null || echo "0" | reflex init || true &&
       reflex export --frontend-only --no-zip
     
     # Start command per production
