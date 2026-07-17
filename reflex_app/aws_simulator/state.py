@@ -257,12 +257,17 @@ class QuizState(rx.State):
             loaded_progress = False
             if mode == "practice":
                 try:
-                    from aws_simulator.state import UserState
-                    user_state = UserState()
-                    if user_state.current_user_id:
-                        from aws_simulator.database import get_db
-                        db = get_db()
-                        progress = db.get_progress(user_state.current_user_id, exam_id)
+                    db = get_db()
+                    
+                    # Ottieni user_id allo stesso modo di save_progress
+                    user_id = self.user_id
+                    if not user_id:
+                        all_profiles = db.get_all_profiles()
+                        if all_profiles:
+                            user_id = max(all_profiles, key=lambda p: p.last_login).id
+                    
+                    if user_id:
+                        progress = db.get_progress(user_id, exam_id)
                         
                         if progress:
                             print(f"📚 Progresso caricato: {len(progress.completed_questions)} domande già fatte")
@@ -275,6 +280,8 @@ class QuizState(rx.State):
                             loaded_progress = True
                 except Exception as e:
                     print(f"⚠️  Errore caricamento progresso: {e}")
+                    import traceback
+                    traceback.print_exc()
             
             if not loaded_progress:
                 async with self:
@@ -364,6 +371,10 @@ class QuizState(rx.State):
             self.current_question_index += 1
             self.selected_answer = None
             self.show_explanation = False
+            
+            # Salva il progresso automaticamente in modalità practice
+            if self.mode == "practice":
+                self.save_progress()
         else:
             # Quiz completato
             self.timer_active = False
@@ -392,6 +403,39 @@ class QuizState(rx.State):
         self.quiz_completed = False
         self.timer_active = False
         self.time_expired = False
+    
+    @rx.event
+    def save_progress(self):
+        """Salva il progresso corrente in modalità practice."""
+        if self.mode != "practice" or not self.exam_id:
+            return
+        
+        db = get_db()
+        
+        # Ottieni user_id come in save_results
+        if self.user_id:
+            user_id = self.user_id
+        else:
+            all_profiles = db.get_all_profiles()
+            if not all_profiles:
+                return
+            user_id = max(all_profiles, key=lambda p: p.last_login).id
+        
+        # Crea il progresso
+        progress = UserProgress(
+            exam_id=self.exam_id,
+            completed_questions=self.answers,
+            correct_count=self.correct_answers_count,
+            last_question_index=self.current_question_index,
+            last_updated=str(__import__("datetime").datetime.now().isoformat()),
+            total_reviewed=len(self.questions),
+        )
+        
+        try:
+            db.save_progress(user_id, self.exam_id, progress)
+            print(f"💾 Progresso salvato: domanda {self.current_question_index + 1}/{len(self.questions)}")
+        except Exception as e:
+            print(f"⚠️  Errore nel salvataggio del progresso: {e}")
     
     @rx.event
     def save_results(self):

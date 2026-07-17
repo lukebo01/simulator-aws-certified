@@ -14,8 +14,47 @@ def mode_card(
     details: list,
     color_scheme: str,
     mode: str,
+    exam_info: dict = None,
 ) -> rx.Component:
-    """Card per una modalità di quiz."""
+    """Card per una modalità di quiz. Info box mostrato solo per modalità exam."""
+    
+    # Info box che verrà mostrato solo per modalità exam
+    # Se exam_info è una Var reattiva, buildamo il box solo se è una Var (not None at Python level)
+    if exam_info is None:
+        info_box = rx.box()  # Empty box for practice mode
+    else:
+        info_box = rx.box(
+            rx.vstack(
+                rx.hstack(
+                    rx.text("ℹ️ Dettagli esame:", size="1", weight="bold", color="#0d6efd"),
+                    rx.spacer(),
+                    width="100%",
+                ),
+                rx.text(
+                    f"📝 Domande a risposta multipla: ~{exam_info.get('multiple_choice', 'N/D')}",
+                    size="1",
+                    color="#495057",
+                ),
+                rx.text(
+                    f"⏱️  Tempo totale: {exam_info.get('duration', 'N/D')} minuti ({exam_info.get('duration_with_esl', 'N/D')} con ESL +30)",
+                    size="1",
+                    color="#495057",
+                ),
+                rx.text(
+                    f"🎯 Nessun punteggio parziale per risposte multiple",
+                    size="1",
+                    color="#495057",
+                ),
+                spacing="2",
+                width="100%",
+            ),
+            background="#e7f5ff",
+            padding="1rem",
+            border_radius="md",
+            border="1px solid #b3d9ff",
+            width="100%",
+        )
+    
     return rx.card(
         rx.vstack(
             # Emoji e titolo
@@ -62,6 +101,9 @@ def mode_card(
                 spacing="2",
                 width="100%",
             ),
+            
+            # Info box per modalità exam
+            info_box,
             
             rx.spacer(),
             
@@ -307,22 +349,40 @@ def mode_selection_page() -> rx.Component:
                         ],
                         color_scheme="blue",
                         mode="practice",
+                        exam_info=None,
                     ),
                     
-                    # Simulazione Esame
+                    # Simulazione Esame - Info dinamica dall'esame selezionato
                     mode_card(
                         title="Simulazione Esame",
                         emoji="🎯",
                         description="Prova reale con timer e domande casuali",
                         details=[
                             "65 domande casuali",
-                            "Tempo limitato (130-180 min)",
+                            rx.cond(
+                                ExamState.available_exams[ExamState.selected_exam].get("duration") == 180,
+                                "Tempo limitato (180 min)",
+                                "Tempo limitato (130 min)",
+                            ),
                             "Le risposte corrette si vedono alla fine",
                             "Simulazione realistica",
                             "Risultato salvato in classifica",
                         ],
                         color_scheme="orange",
                         mode="exam",
+                        exam_info=rx.cond(
+                            ExamState.selected_exam != None,
+                            {
+                                "multiple_choice": rx.cond(
+                                    ExamState.available_exams[ExamState.selected_exam].get("duration") == 180,
+                                    "25-30 su 75",
+                                    "10-15 su 65",
+                                ),
+                                "duration": ExamState.available_exams[ExamState.selected_exam].get("duration", 130),
+                                "duration_with_esl": ExamState.available_exams[ExamState.selected_exam].get("duration_esl", 160),
+                            },
+                            None,
+                        ),
                     ),
                     
                     columns=rx.cond(
@@ -331,6 +391,76 @@ def mode_selection_page() -> rx.Component:
                         "1",
                     ),
                     spacing="6",
+                    width="100%",
+                ),
+                
+                # Sezione info ESL +30 minuti
+                rx.box(
+                    rx.vstack(
+                        rx.heading(
+                            "ℹ️ Diritti ESL - Tempo Aggiuntivo",
+                            size="4",
+                            color="#0a1428",
+                            font_weight="700",
+                        ),
+                        rx.text(
+                            "Se sei un candidato non madrelingua inglese (inclusi gli italiani), hai diritto a 30 minuti di tempo aggiuntivo per TUTTI gli esami AWS.",
+                            size="2",
+                            color="#495057",
+                            line_height="1.6",
+                        ),
+                        rx.divider(),
+                        rx.hstack(
+                            rx.vstack(
+                                rx.heading("📋 Come funziona:", size="3", color="#0d6efd", font_weight="700"),
+                                rx.text("✓ Richiesta una sola volta (vale per tutti gli esami futuri)", size="1", color="#495057"),
+                                rx.text("✓ Approvazione automatica e immediata", size="1", color="#495057"),
+                                rx.text("✓ Nessuna documentazione richiesta", size="1", color="#495057"),
+                                rx.text("✓ Non serve certificato di lingua", size="1", color="#495057"),
+                                spacing="2",
+                                width="100%",
+                            ),
+                            rx.vstack(
+                                rx.heading("⏱️ Tempi per questo esame:", size="3", color="#0d6efd", font_weight="700"),
+                                rx.cond(
+                                    ExamState.available_exams[ExamState.selected_exam].get("duration") == 180,
+                                    rx.vstack(
+                                        rx.text("• Senza ESL: 180 minuti (3h)", size="1", color="#495057"),
+                                        rx.text("• Con ESL: 210 minuti (3h 30m)", size="1", color="#495057"),
+                                        rx.text("• Differenza: +30 minuti", size="1", color="#198754", weight="bold"),
+                                        spacing="1",
+                                    ),
+                                    rx.vstack(
+                                        rx.text("• Senza ESL: 130 minuti (2h 10m)", size="1", color="#495057"),
+                                        rx.text("• Con ESL: 160 minuti (2h 40m)", size="1", color="#495057"),
+                                        rx.text("• Differenza: +30 minuti", size="1", color="#198754", weight="bold"),
+                                        spacing="1",
+                                    ),
+                                ),
+                                spacing="2",
+                                width="100%",
+                            ),
+                            spacing="4",
+                            width="100%",
+                        ),
+                        rx.callout(
+                            rx.text(
+                                "⚠️ IMPORTANTE: Richiedi ESL nel tuo account AWS PRIMA di prenotare l'esame. Se prenoti prima, dovrai annullarlo e riprenotarlo dopo l'approvazione.",
+                                size="1",
+                                color="#856404",
+                            ),
+                            icon="triangle_alert",
+                            color_scheme="orange",
+                            role="alert",
+                            width="100%",
+                        ),
+                        spacing="3",
+                        width="100%",
+                    ),
+                    background="#fffbea",
+                    padding="2rem",
+                    border_radius="lg",
+                    border="1px solid #ffeaa7",
                     width="100%",
                 ),
                 
