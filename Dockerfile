@@ -63,4 +63,4 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
 # 10. AVVIO: Backend + Frontend Reflex sulla porta 8000
-CMD cd /app/reflex_app && reflex run --env prod --frontend-only false
+CMD cd /app/reflex_app && reflex run --env prod

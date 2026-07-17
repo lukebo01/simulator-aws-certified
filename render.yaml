@@ -14,7 +14,7 @@ services:
       pip install -r ../requirements.txt
     
     # Start command - Lancia l'app completa Reflex in production
-    startCommand: cd reflex_app && reflex run --env prod --frontend-only false
+    startCommand: cd reflex_app && reflex run --env prod
     
     # Expose port 8000 (default di Reflex)
     port: 8000
