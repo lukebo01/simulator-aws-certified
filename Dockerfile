@@ -49,10 +49,8 @@ COPY . .
 # 7. Crea cartella assets
 RUN mkdir -p assets/images
 
-# 8. COMPILAZIONE FRONTEND (la tua app è già configurata, non usare reflex init)
-
-# Esporta il frontend in formato statico e sposta in /srv (opzionale, velocizza lo start)
-RUN cd reflex_app && reflex export --frontend-only --no-zip || true
+# 8. COMPILAZIONE FRONTEND (la tua app è già configurata)
+# Non serve reflex export perché reflex run compila tutto automaticamente
 
 # Espone solo la porta 3000 (unico ingresso pubblico – Caddy)
 EXPOSE 3000

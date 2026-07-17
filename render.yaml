@@ -8,12 +8,10 @@ services:
     # Directory dove si trova l'app Reflex
     workingDirectory: reflex_app
     
-    # Build command - Pre-compila il frontend per velocizzare (opzionale)
+    # Build command - Installa dipendenze (reflex run compila tutto)
     buildCommand: |
       pip install --upgrade pip setuptools wheel &&
-      pip install -r ../requirements.txt &&
-      cd reflex_app &&
-      reflex export --frontend-only --no-zip || true
+      pip install -r ../requirements.txt
     
     # Start command - Lancia l'app completa Reflex
     startCommand: cd reflex_app && reflex run --env prod
